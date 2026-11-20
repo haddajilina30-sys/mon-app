@@ -1,20 +1,31 @@
+
 pipeline {
   agent any
-  options { timestamps() }
+
+  options {
+    timestamps()
+  }
+
   environment {
     IMAGE = 'haddajilina/monapp'
     TAG   = "build-${env.BUILD_NUMBER}"
   }
+
   stages {
+
     stage('Checkout') {
-      steps { checkout scm }
+      steps {
+        checkout scm
+      }
     }
+
     stage('Docker Build') {
       steps {
         bat 'docker version'
         bat "docker build -t %IMAGE%:%TAG% ."
       }
     }
+
     stage('Smoke Test') {
       steps {
         bat """
@@ -26,22 +37,41 @@ pipeline {
         """
       }
     }
+
     stage('Push (Docker Hub)') {
       steps {
-        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
-                         usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-          bat """
-            echo %PASS% | docker login -u %USER% --password-stdin
-            docker tag %IMAGE%:%TAG% %IMAGE%:latest
-            docker push %IMAGE%:%TAG%
-            docker push %IMAGE%:latest
-          """
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'dockerhub-creds',
+            usernameVariable: 'USER',
+            passwordVariable: 'PASS'
+          )
+        ]) {
+          powershell '''
+            $env:PASS | docker login -u $env:USER --password-stdin
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+
+            docker tag "$env:IMAGE`:$env:TAG" "$env:IMAGE`:latest"
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+
+            docker push "$env:IMAGE`:$env:TAG"
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+
+            docker push "$env:IMAGE`:latest"
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          '''
         }
       }
     }
   }
+
   post {
-    success { echo 'Build+Test+Push OK' }
-    failure { echo 'Build/Tests/Push KO' }
+    success {
+      echo 'Build+Test+Push OK'
+    }
+
+    failure {
+      echo 'Build/Tests/Push KO'
+    }
   }
 }
